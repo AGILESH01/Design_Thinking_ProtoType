@@ -1,4 +1,17 @@
-export type Screen = 'home' | 'pay' | 'confirm' | 'history' | 'help' | 'practice' | 'recipient' | 'profile' | 'receive' | 'safety' | 'receipt';
+export type Screen = 
+  | 'home' 
+  | 'recipient' 
+  | 'pay' 
+  | 'review' 
+  | 'pin' 
+  | 'confirm' 
+  | 'receipt' 
+  | 'history' 
+  | 'help' 
+  | 'practice' 
+  | 'profile' 
+  | 'receive' 
+  | 'safety';
 
 export interface Transaction {
   id: string;
@@ -21,4 +34,15 @@ export interface Contact {
   iconName: 'User' | 'Building2' | 'Users' | 'Lightbulb';
   color: string;
   bg: string;
+}
+
+export interface PaymentDetails {
+  name: string;
+  upiId: string;
+  amount: number;
+  message: string;
+  method: string;
+  date: string;
+  transactionId: string;
+  remainingBalance: number;
 }

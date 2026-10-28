@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import type { Screen, Transaction, Contact } from './types';
+import type { Screen, Transaction, Contact, PaymentDetails } from './types';
 import { mockContacts } from './data';
 import HomeScreen from './screens/HomeScreen';
 import PayScreen from './screens/PayScreen';
 import RecipientScreen from './screens/RecipientScreen';
+import ReviewScreen from './screens/ReviewScreen';
+import PinScreen from './screens/PinScreen';
 import ConfirmScreen from './screens/ConfirmScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import HelpScreen from './screens/HelpScreen';
@@ -28,7 +30,14 @@ function App() {
   const [balance, setBalance] = useState(2560);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [selectedContact, setSelectedContact] = useState<Contact>(mockContacts[0]);
-  const [lastPayment, setLastPayment] = useState<{name: string, amount: number, message: string} | null>(null);
+  
+  // Active Payment Draft State (preserved across Back / Forward navigation)
+  const [draftAmount, setDraftAmount] = useState<number>(500);
+  const [draftMessage, setDraftMessage] = useState<string>('For family support');
+  const [draftMethod, setDraftMethod] = useState<string>('upi');
+  
+  // Completed Payment Details for Result & Receipt
+  const [lastPayment, setLastPayment] = useState<PaymentDetails | null>(null);
 
   const navigate = (screen: Screen) => {
     setCurrentScreen(screen);
@@ -39,16 +48,29 @@ function App() {
     navigate('pay');
   };
 
-  const handlePaymentSuccess = (amount: number, name: string, message: string) => {
+  const handleProceedToReview = (amount: number, message: string, method: string) => {
+    setDraftAmount(amount);
+    setDraftMessage(message);
+    setDraftMethod(method);
+    navigate('review');
+  };
+
+  const handleProceedToPin = () => {
+    navigate('pin');
+  };
+
+  const handleAuthorizeSuccess = () => {
+    const nextBalance = isPracticeMode ? balance : balance - draftAmount;
+
     if (!isPracticeMode) {
-      setBalance(prev => prev - amount);
+      setBalance(nextBalance);
       
       const newTx: Transaction = {
         id: Date.now().toString(),
-        name,
+        name: selectedContact.name,
         type: 'UPI Payment',
-        date: 'Today, ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-        amount,
+        date: 'Today, ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        amount: draftAmount,
         isReceived: false,
         status: 'Completed',
         iconName: selectedContact.iconName,
@@ -57,33 +79,136 @@ function App() {
       };
       setTransactions([newTx, ...transactions]);
     }
-    
-    setLastPayment({ name, amount, message });
+
+    const txId = 'T' + Math.floor(100000000 + Math.random() * 900000000);
+    const dateStr = 'Today, ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    setLastPayment({
+      name: selectedContact.name,
+      upiId: selectedContact.upiId,
+      amount: draftAmount,
+      message: draftMessage,
+      method: draftMethod,
+      date: dateStr,
+      transactionId: txId,
+      remainingBalance: nextBalance,
+    });
+
     navigate('confirm');
   };
+
+  // Determine if bottom navigation should be visible
+  const showBottomNav = currentScreen === 'home' || currentScreen === 'history' || currentScreen === 'help' || currentScreen === 'recipient';
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-gray-200">
       {/* Mobile Device Container */}
-      <div className="w-full max-w-[400px] h-[100dvh] sm:h-[800px] sm:rounded-[40px] bg-white overflow-hidden shadow-2xl relative flex flex-col border-[8px] border-gray-900">
+      <div className="w-full max-w-[420px] h-[100dvh] sm:h-[820px] sm:rounded-[40px] bg-white overflow-hidden shadow-2xl relative flex flex-col border-[8px] border-gray-900">
         
         {isPracticeMode && (
-          <div className="bg-purple-100 text-purple-900 text-center text-sm font-semibold py-2 px-4 shadow-sm z-10 border-b border-purple-200 flex justify-between items-center">
-            <span>Practice Mode — No real money</span>
-            <button onClick={() => setIsPracticeMode(false)} className="text-purple-700 font-bold underline text-xs">Exit</button>
+          <div className="bg-purple-100 text-purple-900 text-center text-sm font-semibold py-2 px-4 shadow-sm z-20 border-b border-purple-200 flex justify-between items-center">
+            <span>🎓 Practice Mode — No real money transferred</span>
+            <button 
+              onClick={() => setIsPracticeMode(false)} 
+              className="text-purple-700 font-extrabold underline text-xs ml-2 cursor-pointer hover:text-purple-900"
+            >
+              Exit
+            </button>
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative pb-16">
-          {currentScreen === 'home' && <HomeScreen navigate={navigate} balance={balance} onQuickPay={handleSelectContact} />}
-          {currentScreen === 'recipient' && <RecipientScreen navigate={navigate} onSelect={handleSelectContact} />}
-          {currentScreen === 'pay' && <PayScreen navigate={navigate} contact={selectedContact} onPay={handlePaymentSuccess} />}
-          {currentScreen === 'confirm' && <ConfirmScreen navigate={navigate} paymentDetails={lastPayment} contact={selectedContact} />}
-          {currentScreen === 'history' && <HistoryScreen navigate={navigate} transactions={transactions} />}
-          {currentScreen === 'profile' && <ProfileScreen navigate={navigate} />}
-          {currentScreen === 'receive' && <ReceiveScreen navigate={navigate} />}
-          {currentScreen === 'safety' && <SafetyScreen navigate={navigate} />}
-          {currentScreen === 'receipt' && <ReceiptScreen navigate={navigate} paymentDetails={lastPayment} contact={selectedContact} />}
+        <div className={`flex-1 overflow-y-auto overflow-x-hidden relative ${showBottomNav ? 'pb-16' : ''}`}>
+          {currentScreen === 'home' && (
+            <HomeScreen 
+              navigate={navigate} 
+              balance={balance} 
+              onQuickPay={handleSelectContact} 
+            />
+          )}
+
+          {currentScreen === 'recipient' && (
+            <RecipientScreen 
+              navigate={navigate} 
+              onSelect={handleSelectContact} 
+            />
+          )}
+
+          {currentScreen === 'pay' && (
+            <PayScreen 
+              navigate={navigate} 
+              contact={selectedContact} 
+              balance={balance}
+              initialAmount={draftAmount.toString()}
+              initialMessage={draftMessage}
+              initialMethod={draftMethod}
+              onProceedToReview={handleProceedToReview} 
+            />
+          )}
+
+          {currentScreen === 'review' && (
+            <ReviewScreen 
+              navigate={navigate}
+              contact={selectedContact}
+              amount={draftAmount}
+              message={draftMessage}
+              method={draftMethod}
+              balance={balance}
+              onProceedToPin={handleProceedToPin}
+            />
+          )}
+
+          {currentScreen === 'pin' && (
+            <PinScreen 
+              navigate={navigate}
+              contact={selectedContact}
+              amount={draftAmount}
+              message={draftMessage}
+              method={draftMethod}
+              onAuthorize={handleAuthorizeSuccess}
+            />
+          )}
+
+          {currentScreen === 'confirm' && (
+            <ConfirmScreen 
+              navigate={navigate} 
+              paymentDetails={lastPayment} 
+              contact={selectedContact} 
+            />
+          )}
+
+          {currentScreen === 'receipt' && (
+            <ReceiptScreen 
+              navigate={navigate} 
+              paymentDetails={lastPayment} 
+              contact={selectedContact} 
+            />
+          )}
+
+          {currentScreen === 'history' && (
+            <HistoryScreen 
+              navigate={navigate} 
+              transactions={transactions} 
+            />
+          )}
+
+          {currentScreen === 'profile' && (
+            <ProfileScreen 
+              navigate={navigate} 
+            />
+          )}
+
+          {currentScreen === 'receive' && (
+            <ReceiveScreen 
+              navigate={navigate} 
+            />
+          )}
+
+          {currentScreen === 'safety' && (
+            <SafetyScreen 
+              navigate={navigate} 
+            />
+          )}
+
           {currentScreen === 'help' && (
             <HelpScreen 
               navigate={navigate} 
@@ -95,9 +220,9 @@ function App() {
           )}
         </div>
 
-        {(currentScreen === 'home' || currentScreen === 'history' || currentScreen === 'help' || currentScreen === 'pay' || currentScreen === 'recipient') && (
+        {showBottomNav && (
           <div className="absolute bottom-0 w-full z-20">
-             <BottomNav current={currentScreen} navigate={navigate} />
+            <BottomNav current={currentScreen} navigate={navigate} />
           </div>
         )}
       </div>
